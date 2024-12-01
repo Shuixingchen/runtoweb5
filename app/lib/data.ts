@@ -8,6 +8,16 @@ import {
   Revenue,
 } from './definitions';
 import { formatCurrency } from './utils';
+import mysql from 'mysql2/promise';  // 使用mysql2
+import { RowDataPacket, FieldPacket } from 'mysql2';
+// 连接到数据库
+const client = await mysql.createConnection({
+  host     : 'localhost',  // MySQL服务器地址
+  port     : 3306,
+  user     : 'root',               // 用户名
+  password : '123456',           // 密码
+  database : 'runtoweb3'        // 数据库名称
+});
 
 export async function fetchRevenue() {
   try {
@@ -16,12 +26,9 @@ export async function fetchRevenue() {
 
     // console.log('Fetching revenue data...');
     // await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    const data = await sql<Revenue>`SELECT * FROM revenue`;
-
-    // console.log('Data fetch completed after 3 seconds.');
-
-    return data.rows;
+    const [rows] = await client.execute('SELECT * FROM revenue');
+    const data = rows as Revenue[];
+    return data;
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch revenue data.');
@@ -30,14 +37,14 @@ export async function fetchRevenue() {
 
 export async function fetchLatestInvoices() {
   try {
-    const data = await sql<LatestInvoiceRaw>`
+    const [rows] = await client.execute(`
       SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       ORDER BY invoices.date DESC
-      LIMIT 5`;
-
-    const latestInvoices = data.rows.map((invoice) => ({
+      LIMIT 5`);
+    const data = rows as LatestInvoiceRaw[];
+    const latestInvoices = data.map((invoice) => ({
       ...invoice,
       amount: formatCurrency(invoice.amount),
     }));
@@ -53,23 +60,16 @@ export async function fetchCardData() {
     // You can probably combine these into a single SQL query
     // However, we are intentionally splitting them to demonstrate
     // how to initialize multiple queries in parallel with JS.
-    const invoiceCountPromise = sql`SELECT COUNT(*) FROM invoices`;
-    const customerCountPromise = sql`SELECT COUNT(*) FROM customers`;
-    const invoiceStatusPromise = sql`SELECT
+    const [invoiceCountRows]: [RowDataPacket[], FieldPacket[]]  = await  client.execute(`SELECT COUNT(*) as count FROM invoices`);
+    const [customerCountRows]: [RowDataPacket[], FieldPacket[]] = await client.execute(`SELECT COUNT(*) as count FROM customers`);
+    const [invoiceStatusRows]: [RowDataPacket[], FieldPacket[]] = await client.execute(`SELECT
          SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
          SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
-         FROM invoices`;
-
-    const data = await Promise.all([
-      invoiceCountPromise,
-      customerCountPromise,
-      invoiceStatusPromise,
-    ]);
-
-    const numberOfInvoices = Number(data[0].rows[0].count ?? '0');
-    const numberOfCustomers = Number(data[1].rows[0].count ?? '0');
-    const totalPaidInvoices = formatCurrency(data[2].rows[0].paid ?? '0');
-    const totalPendingInvoices = formatCurrency(data[2].rows[0].pending ?? '0');
+         FROM invoices`);
+    const numberOfInvoices = invoiceCountRows[0].count;
+    const numberOfCustomers = customerCountRows[0].count;
+    const totalPaidInvoices = invoiceStatusRows[0].paid;
+    const totalPendingInvoices = invoiceStatusRows[0].pending;
 
     return {
       numberOfCustomers,

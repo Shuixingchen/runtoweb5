@@ -1,122 +1,114 @@
-// import bcrypt from 'bcrypt';
-// import { db } from '@vercel/postgres';
-// import { invoices, customers, revenue, users } from '../lib/placeholder-data';
+import bcrypt from 'bcrypt';
+import { db } from '@vercel/postgres';
+import { invoices, customers, revenue, users } from '../lib/placeholder-data';
+import mysql from 'mysql2/promise';  // 使用mysql2
 
-// const client = await db.connect();
+// 连接到数据库
+const client = await mysql.createConnection({
+  host     : 'localhost',  // MySQL服务器地址
+  port     : 3306,
+  user     : 'root',               // 用户名
+  password : '123456',           // 密码
+  database : 'runtoweb3'        // 数据库名称
+});
 
-// async function seedUsers() {
-//   await client.sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
-//   await client.sql`
-//     CREATE TABLE IF NOT EXISTS users (
-//       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-//       name VARCHAR(255) NOT NULL,
-//       email TEXT NOT NULL UNIQUE,
-//       password TEXT NOT NULL
-//     );
-//   `;
+async function seedUsers() {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email TEXT NOT NULL,
+      password TEXT NOT NULL
+    );
+  `);
+  const insertedUsers = await Promise.all(
+    users.map(async (user) => {
+      const hashedPassword = await bcrypt.hash(user.password, 10);
+      return client.execute(
+        `INSERT INTO users (name, email, password)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE id=id;`,   // MySQL的INSERT IGNORE语法
+        [user.name, user.email, hashedPassword]);
+    })
+  );
+  return insertedUsers;
+}
 
-//   const insertedUsers = await Promise.all(
-//     users.map(async (user) => {
-//       const hashedPassword = await bcrypt.hash(user.password, 10);
-//       return client.sql`
-//         INSERT INTO users (id, name, email, password)
-//         VALUES (${user.id}, ${user.name}, ${user.email}, ${hashedPassword})
-//         ON CONFLICT (id) DO NOTHING;
-//       `;
-//     }),
-//   );
+async function seedInvoices() {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS invoices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      customer_id VARCHAR(255) NOT NULL,
+      amount INT NOT NULL,
+      status VARCHAR(255) NOT NULL,
+      date DATE NOT NULL
+    );
+  `);
+  const insertedInvoices = await Promise.all(
+    invoices.map(async (inv) => {
+      return client.execute(
+        `INSERT INTO invoices (customer_id, amount, status, date)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE id=id;`,   // MySQL的INSERT IGNORE语法
+        [inv.customer_id, inv.amount, inv.status, inv.date]);
+    })
+  );
+  return insertedInvoices;
+}
 
-//   return insertedUsers;
-// }
+async function seedCustomers() {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id VARCHAR(255) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      image_url VARCHAR(255) NOT NULL
+    );
+  `);
+  const insertedCustomers = await Promise.all(
+    customers.map(async (customer) => {
+      return client.execute(
+        `INSERT INTO customers (id, name, email, image_url)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name=VALUES(name),email=VALUES(email),image_url=VALUES(image_url);`,
+        [customer.id, customer.name, customer.email, customer.image_url]);
+    })
+  );
+  return insertedCustomers;
+}
 
-// async function seedInvoices() {
-//   await client.sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
-
-//   await client.sql`
-//     CREATE TABLE IF NOT EXISTS invoices (
-//       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-//       customer_id UUID NOT NULL,
-//       amount INT NOT NULL,
-//       status VARCHAR(255) NOT NULL,
-//       date DATE NOT NULL
-//     );
-//   `;
-
-//   const insertedInvoices = await Promise.all(
-//     invoices.map(
-//       (invoice) => client.sql`
-//         INSERT INTO invoices (customer_id, amount, status, date)
-//         VALUES (${invoice.customer_id}, ${invoice.amount}, ${invoice.status}, ${invoice.date})
-//         ON CONFLICT (id) DO NOTHING;
-//       `,
-//     ),
-//   );
-
-//   return insertedInvoices;
-// }
-
-// async function seedCustomers() {
-//   await client.sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
-
-//   await client.sql`
-//     CREATE TABLE IF NOT EXISTS customers (
-//       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-//       name VARCHAR(255) NOT NULL,
-//       email VARCHAR(255) NOT NULL,
-//       image_url VARCHAR(255) NOT NULL
-//     );
-//   `;
-
-//   const insertedCustomers = await Promise.all(
-//     customers.map(
-//       (customer) => client.sql`
-//         INSERT INTO customers (id, name, email, image_url)
-//         VALUES (${customer.id}, ${customer.name}, ${customer.email}, ${customer.image_url})
-//         ON CONFLICT (id) DO NOTHING;
-//       `,
-//     ),
-//   );
-
-//   return insertedCustomers;
-// }
-
-// async function seedRevenue() {
-//   await client.sql`
-//     CREATE TABLE IF NOT EXISTS revenue (
-//       month VARCHAR(4) NOT NULL UNIQUE,
-//       revenue INT NOT NULL
-//     );
-//   `;
-
-//   const insertedRevenue = await Promise.all(
-//     revenue.map(
-//       (rev) => client.sql`
-//         INSERT INTO revenue (month, revenue)
-//         VALUES (${rev.month}, ${rev.revenue})
-//         ON CONFLICT (month) DO NOTHING;
-//       `,
-//     ),
-//   );
-
-//   return insertedRevenue;
-// }
+async function seedRevenue() {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS revenue (
+      month VARCHAR(4) PRIMARY KEY,
+      revenue INT NOT NULL
+    );
+  `);
+  const insertedRevenue = await Promise.all(
+    revenue.map(async (rev) => {
+      return client.execute(
+        `INSERT INTO revenue (month, revenue)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE revenue=revenue;`,   // MySQL的INSERT IGNORE语法
+        [rev.month, rev.revenue]);
+    })
+  );
+  return insertedRevenue;
+}
 
 export async function GET() {
-  return Response.json({
-    message:
-      'Uncomment this file and remove this line. You can delete this file when you are finished.',
-  });
-  // try {
-  //   await client.sql`BEGIN`;
-  //   await seedUsers();
-  //   await seedCustomers();
-  //   await seedInvoices();
-  //   await seedRevenue();
-  //   await client.sql`COMMIT`;
+  // return Response.json({
+  //   message:
+  //     'Uncomment this file and remove this line. You can delete this file when you are finished.',
+  // });
+  try {
+    await seedUsers();
+    await seedCustomers();
+    await seedInvoices();
+    await seedRevenue();
 
-  //   return Response.json({ message: 'Database seeded successfully' });
-  // } catch (error) {
-  //   await client.sql`ROLLBACK`;
-  //   return Response.json({ error }, { status: 500 });
-  // }
+    return Response.json({ message: 'Database seeded successfully' });
+  } catch (error) {
+    return Response.json({ error }, { status: 500 });
+  }
 }
