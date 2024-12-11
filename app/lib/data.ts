@@ -24,8 +24,8 @@ export async function fetchRevenue() {
     // Artificially delay a response for demo purposes.
     // Don't do this in production :)
 
-    // console.log('Fetching revenue data...');
-    // await new Promise((resolve) => setTimeout(resolve, 3000));
+    console.log('Fetching revenue data...');
+    await new Promise((resolve) => setTimeout(resolve, 3000));
     const [rows] = await client.execute('SELECT * FROM revenue');
     const data = rows as Revenue[];
     return data;
@@ -37,6 +37,7 @@ export async function fetchRevenue() {
 
 export async function fetchLatestInvoices() {
   try {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
     const [rows] = await client.execute(`
       SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
@@ -91,28 +92,30 @@ export async function fetchFilteredInvoices(
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
-    const invoices = await sql<InvoicesTable>`
-      SELECT
-        invoices.id,
-        invoices.amount,
-        invoices.date,
-        invoices.status,
-        customers.name,
-        customers.email,
-        customers.image_url
-      FROM invoices
-      JOIN customers ON invoices.customer_id = customers.id
-      WHERE
-        customers.name ILIKE ${`%${query}%`} OR
-        customers.email ILIKE ${`%${query}%`} OR
-        invoices.amount::text ILIKE ${`%${query}%`} OR
-        invoices.date::text ILIKE ${`%${query}%`} OR
-        invoices.status ILIKE ${`%${query}%`}
-      ORDER BY invoices.date DESC
-      LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
-    `;
-
-    return invoices.rows;
+    const sql = `
+    SELECT
+      invoices.id,
+      invoices.amount,
+      invoices.date,
+      invoices.status,
+      customers.name,
+      customers.email,
+      customers.image_url
+    FROM invoices
+    JOIN customers ON invoices.customer_id = customers.id
+    WHERE
+      customers.name LIKE '%${query}%' OR
+      customers.email LIKE '%${query}%' OR
+      invoices.amount LIKE '%${query}%' OR
+      invoices.date LIKE '%${query}%' OR
+      invoices.status LIKE '%${query}%'
+    ORDER BY invoices.date DESC
+    LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
+  `
+    const [rows] = await client.execute(sql);
+    console.log('Fetched invoices:', sql);
+    const data = rows as InvoicesTable[];
+    return data;
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch invoices.');
@@ -121,18 +124,19 @@ export async function fetchFilteredInvoices(
 
 export async function fetchInvoicesPages(query: string) {
   try {
-    const count = await sql`SELECT COUNT(*)
+    const sql =  `SELECT COUNT(*) as count
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
     WHERE
-      customers.name ILIKE ${`%${query}%`} OR
-      customers.email ILIKE ${`%${query}%`} OR
-      invoices.amount::text ILIKE ${`%${query}%`} OR
-      invoices.date::text ILIKE ${`%${query}%`} OR
-      invoices.status ILIKE ${`%${query}%`}
-  `;
-
-    const totalPages = Math.ceil(Number(count.rows[0].count) / ITEMS_PER_PAGE);
+      customers.name LIKE '%${query}%' OR
+      customers.email LIKE '%${query}%' OR
+      invoices.amount LIKE '%${query}%' OR
+      invoices.date LIKE '%${query}%' OR
+      invoices.status LIKE '%${query}%'
+    `;
+    // console.log('Fetching invoices pages:', sql);
+    const [invoiceCountRows]: [RowDataPacket[], FieldPacket[]]  = await client.execute(sql);
+    const totalPages = Math.ceil(Number(invoiceCountRows[0].count) / ITEMS_PER_PAGE);
     return totalPages;
   } catch (error) {
     console.error('Database Error:', error);
@@ -140,9 +144,19 @@ export async function fetchInvoicesPages(query: string) {
   }
 }
 
+export async function execute(sql: string){
+  try{
+    await client.execute(sql);
+  }catch(error){
+    console.error('Database Error:', error);
+    throw new Error('Failed to excute sql: '+sql);
+  }
+}
+
+
 export async function fetchInvoiceById(id: string) {
   try {
-    const data = await sql<InvoiceForm>`
+    const sql= `
       SELECT
         invoices.id,
         invoices.customer_id,
@@ -151,8 +165,9 @@ export async function fetchInvoiceById(id: string) {
       FROM invoices
       WHERE invoices.id = ${id};
     `;
-
-    const invoice = data.rows.map((invoice) => ({
+    const [rows] = await client.execute(sql);
+    const data = rows as InvoiceForm[];
+    const invoice = data.map((invoice) => ({
       ...invoice,
       // Convert amount from cents to dollars
       amount: invoice.amount / 100,
@@ -167,15 +182,15 @@ export async function fetchInvoiceById(id: string) {
 
 export async function fetchCustomers() {
   try {
-    const data = await sql<CustomerField>`
+    const sql = `
       SELECT
         id,
         name
       FROM customers
       ORDER BY name ASC
     `;
-
-    const customers = data.rows;
+    let [rows] = await client.execute(sql);
+    const customers = rows as CustomerField[];
     return customers;
   } catch (err) {
     console.error('Database Error:', err);
