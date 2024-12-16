@@ -6,6 +6,7 @@ import {
   InvoicesTable,
   LatestInvoiceRaw,
   Revenue,
+  User
 } from './definitions';
 import { formatCurrency } from './utils';
 import mysql from 'mysql2/promise';  // 使用mysql2
@@ -228,5 +229,17 @@ export async function fetchFilteredCustomers(query: string) {
   } catch (err) {
     console.error('Database Error:', err);
     throw new Error('Failed to fetch customer table.');
+  }
+}
+
+export async function getUser(email:string):Promise<User | undefined> {
+  try {
+    const sql = `SELECT * FROM users WHERE email=${email}`;
+    const [rows] = await client.execute(sql);
+    const user = rows as User[];
+    return user[0]; 
+  } catch (error) {
+    console.error('Failed to fetch user:', error);
+    throw new Error('Failed to fetch user.');
   }
 }
